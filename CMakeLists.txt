@@ -418,20 +418,3 @@ add_subdirectory( src )
 if( NOT CMAKE_CROSSCOMPILING )
 	export(TARGETS ${CROSS_EXPORTS} FILE "${CMAKE_BINARY_DIR}/ImportExecutables.cmake" )
 endif()
-
-# Find and include SDL2
-find_package(SDL2 REQUIRED)
-include_directories(${SDL2_INCLUDE_DIRS})
-
-# Add SDL-specific source files
-set(SDL_SOURCE_FILES
-    src/common/platform/sdl/i_sdl-hid.cpp
-    src/common/platform/sdl/sdl_hid.h
-    # Add other SDL-related source files here
-)
-
-# Add executable or library
-add_executable(${PROJECT_NAME} ${SDL_SOURCE_FILES} ${OTHER_SOURCE_FILES})
-
-# Link SDL2
-target_link_libraries(${PROJECT_NAME} ${SDL2_LIBRARIES})
