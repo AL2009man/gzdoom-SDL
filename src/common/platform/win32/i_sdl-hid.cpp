@@ -43,7 +43,7 @@
 // IMPLEMENTATION ----------------------------------------------------------
 
 
-// Constructor for the SDL gamepad controller
+// Constructor for the SDL GameController 
 FSDLGamepadController::FSDLGamepadController(int index)
 {
     Index = index;
@@ -55,7 +55,7 @@ FSDLGamepadController::FSDLGamepadController(int index)
     }
 }
 
-// Destructor for the SDL gamepad controller
+// Destructor for the SDL GameController 
 FSDLGamepadController::~FSDLGamepadController()
 {
     if (gamepad)
@@ -65,7 +65,7 @@ FSDLGamepadController::~FSDLGamepadController()
     delete[] Axes;
 }
 
-// Process input for the SDL gamepad controller
+// Process input for the SDL GameController 
 void FSDLGamepadController::ProcessInput()
 {
     if (!gamepad || !IsConnected())
@@ -78,7 +78,7 @@ void FSDLGamepadController::ProcessInput()
     }
 }
 
-// Add axes for the SDL gamepad controller
+// Add axes for the SDL GameController 
 void FSDLGamepadController::AddAxes(float axes[NUM_JOYAXIS])
 {
     for (int i = 0; i < NUM_AXES; ++i)
@@ -87,31 +87,31 @@ void FSDLGamepadController::AddAxes(float axes[NUM_JOYAXIS])
     }
 }
 
-// Get the name of the SDL gamepad controller
+// Get the name of the SDL GameController 
 FString FSDLGamepadController::GetName()
 {
     return SDL_GameControllerName(gamepad);
 }
 
-// Get the sensitivity of the SDL gamepad controller
+// Get the sensitivity of the SDL GameController 
 float FSDLGamepadController::GetSensitivity()
 {
     return Multiplier;
 }
 
-// Set the sensitivity of the SDL gamepad controller
+// Set the sensitivity of the SDL GameController 
 void FSDLGamepadController::SetSensitivity(float scale)
 {
     Multiplier = scale;
 }
 
-// Get the number of axes for the SDL gamepad controller
+// Get the number of axes for the SDL GameController 
 int FSDLGamepadController::GetNumAxes()
 {
     return NUM_AXES;
 }
 
-// Get the dead zone for an axis of the SDL gamepad controller
+// Get the dead zone for an axis of the SDL GameController 
 float FSDLGamepadController::GetAxisDeadZone(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -121,7 +121,7 @@ float FSDLGamepadController::GetAxisDeadZone(int axis)
     return 0.0f;
 }
 
-// Get the game axis map for an axis of the SDL gamepad controller
+// Get the game axis map for an axis of the SDL GameController 
 EJoyAxis FSDLGamepadController::GetAxisMap(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -131,7 +131,7 @@ EJoyAxis FSDLGamepadController::GetAxisMap(int axis)
     return JOYAXIS_None;
 }
 
-// Get the name of an axis of the SDL gamepad controller
+// Get the name of an axis of the SDL GameController 
 const char* FSDLGamepadController::GetAxisName(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -141,7 +141,7 @@ const char* FSDLGamepadController::GetAxisName(int axis)
     return "Invalid";
 }
 
-// Get the scale for an axis of the SDL gamepad controller
+// Get the scale for an axis of the SDL GameController 
 float FSDLGamepadController::GetAxisScale(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -151,7 +151,7 @@ float FSDLGamepadController::GetAxisScale(int axis)
     return 0.0f;
 }
 
-// Set the dead zone for an axis of the SDL gamepad controller
+// Set the dead zone for an axis of the SDL GameController 
 void FSDLGamepadController::SetAxisDeadZone(int axis, float deadzone)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -160,7 +160,7 @@ void FSDLGamepadController::SetAxisDeadZone(int axis, float deadzone)
     }
 }
 
-// Set the game axis map for an axis of the SDL gamepad controller
+// Set the game axis map for an axis of the SDL GameController 
 void FSDLGamepadController::SetAxisMap(int axis, EJoyAxis gameaxis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -169,7 +169,7 @@ void FSDLGamepadController::SetAxisMap(int axis, EJoyAxis gameaxis)
     }
 }
 
-// Set the scale for an axis of the SDL gamepad controller
+// Set the scale for an axis of the SDL GameController 
 void FSDLGamepadController::SetAxisScale(int axis, float scale)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -178,13 +178,13 @@ void FSDLGamepadController::SetAxisScale(int axis, float scale)
     }
 }
 
-// Check if the sensitivity of the SDL gamepad controller is default
+// Check if the sensitivity of the SDL GameController  is default
 bool FSDLGamepadController::IsSensitivityDefault()
 {
     return Multiplier == 1.0f;
 }
 
-// Check if the dead zone for an axis of the SDL gamepad controller is default
+// Check if the dead zone for an axis of the SDL GameController  is default
 bool FSDLGamepadController::IsAxisDeadZoneDefault(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -194,7 +194,7 @@ bool FSDLGamepadController::IsAxisDeadZoneDefault(int axis)
     return true;
 }
 
-// Check if the game axis map for an axis of the SDL gamepad controller is default
+// Check if the game axis map for an axis of the SDL GameController  is default
 bool FSDLGamepadController::IsAxisMapDefault(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -204,7 +204,7 @@ bool FSDLGamepadController::IsAxisMapDefault(int axis)
     return true;
 }
 
-// Check if the scale for an axis of the SDL gamepad controller is default
+// Check if the scale for an axis of the SDL GameController  is default
 bool FSDLGamepadController::IsAxisScaleDefault(int axis)
 {
     if (axis >= 0 && axis < NUM_AXES)
@@ -214,13 +214,13 @@ bool FSDLGamepadController::IsAxisScaleDefault(int axis)
     return true;
 }
 
-// Get if the SDL gamepad controller is enabled
+// Get if the SDL GameController  is enabled
 bool FSDLGamepadController::GetEnabled()
 {
     return gamepad != nullptr;
 }
 
-// Set if the SDL gamepad controller is enabled
+// Set if the SDL GameController  is enabled
 void FSDLGamepadController::SetEnabled(bool enabled)
 {
     if (enabled && !gamepad)
@@ -234,7 +234,7 @@ void FSDLGamepadController::SetEnabled(bool enabled)
     }
 }
 
-// Set the default configuration for the SDL gamepad controller
+// Set the default configuration for the SDL GameController 
 void FSDLGamepadController::SetDefaultConfig()
 {
     Multiplier = 1.0f;
@@ -248,13 +248,13 @@ void FSDLGamepadController::SetDefaultConfig()
     }
 }
 
-// Get the identifier for the SDL gamepad controller
+// Get the identifier for the SDL GameController 
 FString FSDLGamepadController::GetIdentifier()
 {
     return FStringf("SDL:%d", Index);
 }
 
-// Constructor for the SDL gamepad manager
+// Constructor for the SDL GameController manager
 FSDLGamepadManager::FSDLGamepadManager()
 {
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0)
@@ -277,7 +277,7 @@ FSDLGamepadManager::FSDLGamepadManager()
     }
 }
 
-// Destructor for the SDL gamepad manager
+// Destructor for the SDL GameController manager
 FSDLGamepadManager::~FSDLGamepadManager()
 {
     int numGamepads = SDL_NumJoysticks();
@@ -290,13 +290,13 @@ FSDLGamepadManager::~FSDLGamepadManager()
     SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 }
 
-// Get if the SDL gamepad device is initialized
+// Get if the SDL GameController device is initialized
 bool FSDLGamepadManager::GetDevice()
 {
     return SDL_WasInit(SDL_INIT_GAMECONTROLLER) != 0;
 }
 
-// Process input for the SDL gamepad manager
+// Process input for the SDL GameController manager
 void FSDLGamepadManager::ProcessInput()
 {
     int numGamepads = SDL_NumJoysticks();
@@ -309,7 +309,7 @@ void FSDLGamepadManager::ProcessInput()
     }
 }
 
-// Add axes for the SDL gamepad manager
+// Add axes for the SDL GameController manager
 void FSDLGamepadManager::AddAxes(float axes[NUM_JOYAXIS])
 {
     int numGamepads = SDL_NumJoysticks();
@@ -322,7 +322,7 @@ void FSDLGamepadManager::AddAxes(float axes[NUM_JOYAXIS])
     }
 }
 
-// Get the devices for the SDL gamepad manager
+// Get the devices for the SDL GameController manager
 void FSDLGamepadManager::GetDevices(TArray<IJoystickConfig*>& sticks)
 {
     int numGamepads = SDL_NumJoysticks();
@@ -335,13 +335,13 @@ void FSDLGamepadManager::GetDevices(TArray<IJoystickConfig*>& sticks)
     }
 }
 
-// Rescan for devices for the SDL gamepad manager
+// Rescan for devices for the SDL GameController manager
 IJoystickConfig* FSDLGamepadManager::Rescan()
 {
     return NULL;
 }
 
-// Initialize SDL gamepad
+// Initialize SDL GameController
 void I_StartupSDLGamepad()
 {
     if (!use_joystick || Args->CheckParm("-nojoy"))
@@ -370,7 +370,7 @@ void I_StartupSDLGamepad()
     }
 }
 
-// Shutdown SDL gamepad
+// Shutdown SDL GameController
 void I_ShutdownSDLGamepad()
 {
     if (JoyDevices[INPUT_SDL] != NULL)
