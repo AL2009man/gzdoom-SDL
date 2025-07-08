@@ -1,6 +1,8 @@
 // for flag changer functions.
 const FLAG_NO_CHANGE = -1;
 const MAXPLAYERS = 64;
+const TEAM_NONE = 255;
+const TEAM_MAXIMUM = 16;
 
 enum EStateUseFlags
 {
@@ -975,6 +977,7 @@ enum EDmgFlags
 	DMG_NO_PAIN = 1024,
 	DMG_EXPLOSION = 2048,
 	DMG_NO_ENHANCE = 4096,
+	DMG_RAILGUN = 8192,
 }
 
 enum EReplace
@@ -1418,6 +1421,7 @@ enum ELevelFlags
 	LEVEL3_LIGHTCREATED			= 0x00080000,	// a light had been created in the last frame
 	LEVEL3_NOFOGOFWAR			= 0x00100000,	// disables effect of r_radarclipper CVAR on this map
 	LEVEL3_SECRET				= 0x00200000,	// level is a secret level
+	LEVEL3_SKYMIST				= 0x00400000,   // level skyfog uses the skymist texture
 };
 
 // [RH] Compatibility flags.
@@ -1547,3 +1551,17 @@ enum EParticleStyle
 	PT_ROUND	= 1,
 	PT_SMOOTH	= 2,
 };
+
+enum ESetBoneMode
+{
+	SB_CLEAR = 0,
+	SB_ADD = 1,
+	SB_REPLACE = 2,
+};
+
+enum EIQMFlags
+{
+	IQM_GET_BONE_INFO  =		1 << 2,
+	IQM_GET_BONE_INFO_RECALC  =	1 << 3, // RECALCULATE BONE INFO INSTANTLY WHEN STATE/ANIMATION CHANGES, MIGHT GET EXPENSIVE
+};
+

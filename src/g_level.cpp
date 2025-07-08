@@ -623,6 +623,9 @@ void G_InitNew (const char *mapname, bool bTitleLevel)
 		primaryLevel->totaltime = 0;
 		primaryLevel->spawnindex = 0;
 
+		primaryLevel->lightlists.wall_dlist.Clear();
+		primaryLevel->lightlists.flat_dlist.Clear();
+
 		if (!multiplayer || !deathmatch)
 		{
 			InitPlayerClasses ();
@@ -1045,9 +1048,10 @@ DIntermissionController* FLevelLocals::CreateIntermission()
 //
 //=============================================================================
 
-void RunIntermission(level_info_t* fromMap, level_info_t* toMap, DIntermissionController* intermissionScreen, DObject* statusScreen, std::function<void(bool)> completionf)
+void RunIntermission(level_info_t* fromMap, level_info_t* toMap, DIntermissionController* intermissionScreen, DObject* statusScreen, bool ending, std::function<void(bool)> completionf)
 {
-	cutscene.runner = CreateRunner(false);
+	// Make sure the finale can't be skipped, otherwise the intermission always needs to be skippable.
+	cutscene.runner = CreateRunner(false, ending ? ST_UNSKIPPABLE : ST_MUST_BE_SKIPPABLE);
 	GC::WriteBarrier(cutscene.runner);
 	cutscene.completion = std::move(completionf);
 	
@@ -1136,7 +1140,7 @@ void G_DoCompleted (void)
 	bool endgame = strncmp(nextlevel.GetChars(), "enDSeQ", 6) == 0;
 	intermissionScreen = primaryLevel->CreateIntermission();
 	auto nextinfo = !playinter || endgame? nullptr : FindLevelInfo(nextlevel.GetChars(), false);
-	RunIntermission(primaryLevel->info, nextinfo, intermissionScreen, statusScreen, [=](bool)
+	RunIntermission(primaryLevel->info, nextinfo, intermissionScreen, statusScreen, endgame, [=](bool)
 	{
 		if (!endgame) primaryLevel->WorldDone();
 		else D_StartTitle();
@@ -1832,8 +1836,10 @@ void FLevelLocals::Init()
 
 	skyspeed1 = info->skyspeed1;
 	skyspeed2 = info->skyspeed2;
+	skymistspeed = info->skymistspeed;
 	skytexture1 = TexMan.GetTextureID(info->SkyPic1.GetChars(), ETextureType::Wall, FTextureManager::TEXMAN_Overridable | FTextureManager::TEXMAN_ReturnFirst);
 	skytexture2 = TexMan.GetTextureID(info->SkyPic2.GetChars(), ETextureType::Wall, FTextureManager::TEXMAN_Overridable | FTextureManager::TEXMAN_ReturnFirst);
+	skymisttexture = TexMan.GetTextureID(info->SkyMistPic.GetChars(), ETextureType::Wall, FTextureManager::TEXMAN_Overridable | FTextureManager::TEXMAN_ReturnFirst);
 	fadeto = info->fadeto;
 	cdtrack = info->cdtrack;
 	cdid = info->cdid;
@@ -1897,6 +1903,9 @@ void FLevelLocals::Init()
 	outsidefogdensity = info->outsidefogdensity;
 	skyfog = info->skyfog;
 	deathsequence = info->deathsequence;
+
+	thickfogdistance = info->thickfogdistance;
+	thickfogmultiplier = info->thickfogmultiplier;
 
 	pixelstretch = info->pixelstretch;
 
@@ -2029,7 +2038,7 @@ void G_ReadSnapshots(FResourceFile *resf)
 
 	G_ClearSnapshots();
 
-	for (unsigned j = 0; j < resf->EntryCount(); j++)
+	for (unsigned j = 0; j < resf->EntryCountU(); j++)
 	{
 		auto name = resf->getName(j);
 		auto ptr = strstr(name, ".map.json");

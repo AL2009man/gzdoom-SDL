@@ -101,6 +101,7 @@
 #include "fragglescript/t_fs.h"
 #include "shadowinlines.h"
 #include "model.h"
+#include "models.h"
 #include "d_net.h"
 
 // MACROS ------------------------------------------------------------------
@@ -149,6 +150,10 @@ FRandom pr_spawnmissile("SpawnMissile");
 
 CUSTOM_CVAR (Float, sv_gravity, 800.f, CVAR_SERVERINFO|CVAR_NOSAVE|CVAR_NOINITCALL)
 {
+	// test NAN and INF
+	if (((double)self != (double)self) || isinf((double)self))
+		sv_gravity = 800.f;
+
 	for (auto Level : AllLevels())
 	{
 		Level->gravity = self;
@@ -242,7 +247,6 @@ void AActor::Serialize(FSerializer &arc)
 		A("angles", Angles)
 		A("frame", frame)
 		A("scale", Scale)
-		A("nolocalrender", NoLocalRender) // Note: This will probably be removed later since a better solution is needed
 		A("renderstyle", RenderStyle)
 		A("renderflags", renderflags)
 		A("renderflags2", renderflags2)
@@ -535,6 +539,8 @@ DBehavior* AActor::AddBehavior(PClass& type)
 			return nullptr;
 
 		b->Owner = this;
+		b->ObjectFlags |= (ObjectFlags & (OF_ClientSide | OF_Transient));
+
 		Behaviors[type.TypeName] = b;
 		Level->AddActorBehavior(*b);
 		IFOVERRIDENVIRTUALPTRNAME(b, NAME_Behavior, Initialize)
@@ -648,6 +654,9 @@ void AActor::MoveBehaviors(AActor& from)
 {
 	if (&from == this)
 		return;
+
+	if (IsClientside() != from.IsClientside())
+		I_Error("Cannot move Behaviors between client-side and world Actors");
 
 	// Clean these up properly before transferring.
 	ClearBehaviors();
@@ -870,9 +879,17 @@ bool AActor::SetState (FState *newstate, bool nofunction)
 	if (debugfile && player && (player->cheats & CF_PREDICTING))
 		fprintf (debugfile, "for pl %d: SetState while predicting!\n", Level->PlayerNum(player));
 	
+	int statelooplimit = 300000;
 	auto oldstate = state;
 	do
 	{
+		if (!(--statelooplimit))
+		{
+			Printf(TEXTCOLOR_RED "Infinite state loop in Actor '%s' state '%s'\n", GetClass()->TypeName.GetChars(), FState::StaticGetStateName(state).GetChars());
+			state = nullptr;
+			Destroy();
+			return false;
+		}
 		if (newstate == NULL)
 		{
 			state = NULL;
@@ -1185,6 +1202,9 @@ int P_GetRealMaxHealth(AActor *actor, int max)
 	// Max is 0 by default, preserving default behavior for P_GiveBody()
 	// calls while supporting health pickups.
 	auto player = actor->player;
+	auto orig_max = max;
+	int maxPickupHealth = actor->IntVar(NAME_MaxPickupHealth);
+
 	if (max <= 0)
 	{
 		max = actor->GetMaxHealth(true);
@@ -1215,6 +1235,13 @@ int P_GetRealMaxHealth(AActor *actor, int max)
 		{
 			max += actor->IntVar(NAME_BonusHealth);
 		}
+	}
+	if (maxPickupHealth)
+	{
+		max = maxPickupHealth;
+		// Allow health items with greater MaxAmount values to work properly.
+		if (orig_max > 0 && orig_max > max)
+			max = orig_max;
 	}
 	return max;
 }
@@ -1765,6 +1792,30 @@ void SerializeModelID(FSerializer &arc, const char *key, int &id)
 	}
 }
 
+template<typename T>
+static FSerializer &SerializeBoneOverrideComponent(FSerializer &arc, const char *key, T &comp)
+{
+	arc.BeginObject(key);
+	arc("mode", comp.mode);
+	arc("prev_mode", comp.prev_mode);
+	arc("switchtic", comp.switchtic);
+	arc("interplen", comp.interplen);
+	arc("prev", comp.prev);
+	arc("cur", comp.cur);
+	arc.EndObject();
+	return arc;
+}
+
+FSerializer &Serialize(FSerializer &arc, const char *key, BoneOverride &mod, BoneOverride *def)
+{
+	arc.BeginObject(key);
+	SerializeBoneOverrideComponent(arc, "translation", mod.translation);
+	SerializeBoneOverrideComponent(arc, "rotation", mod.rotation);
+	SerializeBoneOverrideComponent(arc, "scaling", mod.scaling);
+	arc.EndObject();
+	return arc;
+}
+
 FSerializer &Serialize(FSerializer &arc, const char *key, ModelOverride &mo, ModelOverride *def)
 {
 	arc.BeginObject(key);
@@ -1870,6 +1921,7 @@ void DActorModelData::Serialize(FSerializer& arc)
 		("skinIDs", skinIDs)
 		("animationIDs", animationIDs)
 		("modelFrameGenerators", modelFrameGenerators)
+		("modelBoneOverrides", modelBoneOverrides)
 		("flags", flags)
 		("overrideFlagsSet", overrideFlagsSet)
 		("overrideFlagsClear", overrideFlagsClear)
@@ -2345,7 +2397,7 @@ bool P_SeekerMissile (AActor *actor, DAngle thresh, DAngle turnMax, bool precise
 			double aimheight = target->Height/2;
 			if (target->player)
 			{
-				aimheight = target->player->DefaultViewHeight();
+				aimheight = target->player->viewz - target->Z();
 			}
 			pitch = DVector2(dist, target->Z() + aimheight - actor->Center()).Angle();
 		}
@@ -4216,6 +4268,211 @@ DEFINE_ACTION_FUNCTION(AActor, CheckPortalTransition)
 	return 0;
 }
 
+void AActor::CalcBones(bool recalc)
+{
+	if(modelData && (!recalc || (modelData->flags & MODELDATA_GET_BONE_INFO_RECALC)) && modelData->flags & MODELDATA_GET_BONE_INFO)
+	{
+		if(picnum.isValid()) return; // picnum overrides don't render models
+
+		FSpriteModelFrame *smf = FindModelFrame(this, sprite, frame, false); // dropped flag is for voxels
+
+		if(!smf) return;
+
+		bool is_decoupled = flags9 & MF9_DECOUPLEDANIMATIONS;
+		double tic = Level->totaltime + 1;
+
+		CalcModelFrameInfo frameinfo = CalcModelFrame(Level, smf, state, tics, modelData, this, is_decoupled, tic, 1.0);
+		
+		ModelDrawInfo drawinfo;
+
+		int boneStartingPosition = -1;
+		bool evaluatedSingle = false;
+
+		modelData->modelBoneInfo.Resize(frameinfo.modelsamount);
+
+		for (unsigned i = 0; i < frameinfo.modelsamount; i++)
+		{
+			if (CalcModelOverrides(i, smf, modelData, frameinfo, drawinfo, is_decoupled))
+			{
+				if(!evaluatedSingle)
+				{ // [Jay] TODO per-model decoupled animations
+					FModel * mdl = Models[drawinfo.modelid];
+					bool nextFrame = frameinfo.smfNext && drawinfo.modelframe != drawinfo.modelframenext;
+					ProcessModelFrame(mdl, nextFrame, i, smf, modelData, frameinfo, drawinfo, is_decoupled, tic, &modelData->modelBoneInfo[i]);
+
+					if(frameinfo.smf_flags & MDL_MODELSAREATTACHMENTS || is_decoupled)
+					{
+						evaluatedSingle = true;
+						//if(!is_decoupled) break;
+
+						break; // TODO remove this break when per-model decoupled animations are in
+					}
+				}
+			}
+		}
+	}
+}
+
+TRS AActor::GetBoneTRS(int model_index, int bone_index, bool with_override)
+{
+	if(modelData && (modelData->flags & MODELDATA_GET_BONE_INFO) && model_index >= 0 && bone_index >= 0 && modelData->modelBoneInfo.SSize() > model_index && modelData->modelBoneInfo[model_index].bones.SSize() > bone_index)
+	{
+		return with_override ? modelData->modelBoneInfo[model_index].bones_with_override[bone_index] : modelData->modelBoneInfo[model_index].bones[bone_index];
+	}
+	return {};
+}
+
+void AActor::GetBoneMatrix(int model_index, int bone_index, bool with_override, double *outMat)
+{
+	if(modelData && (modelData->flags & MODELDATA_GET_BONE_INFO) && model_index >= 0 && bone_index >= 0 && modelData->modelBoneInfo.SSize() > model_index && modelData->modelBoneInfo[model_index].positions.SSize() > bone_index)
+	{
+		VSMatrix boneMatrix = (with_override ? modelData->modelBoneInfo[model_index].positions_with_override : modelData->modelBoneInfo[model_index].positions)[bone_index];
+
+		for(int i = 0; i < 16; i++)
+		{
+			outMat[i] = boneMatrix.mMatrix[i];
+		}
+	}
+}
+
+DVector3 AActor::GetBoneEulerAngles(int model_index, int bone_index, bool with_override)
+{
+	if(modelData && (modelData->flags & MODELDATA_GET_BONE_INFO) && model_index >= 0 && bone_index >= 0 && modelData->modelBoneInfo.SSize() > model_index && modelData->modelBoneInfo[model_index].positions.SSize() > bone_index)
+	{
+		if(picnum.isValid()) return DVector3(0,0,0); // picnum overrides don't render models
+
+		FSpriteModelFrame *smf = FindModelFrame(this, sprite, frame, false); // dropped flag is for voxels
+
+		FVector3 objPos = FVector3(Pos() + WorldOffset);
+
+		VSMatrix boneMatrix = (with_override ? modelData->modelBoneInfo[model_index].positions_with_override : modelData->modelBoneInfo[model_index].positions)[bone_index];
+		VSMatrix worldMatrix = smf->ObjectToWorldMatrix(this, objPos.X, objPos.Y, objPos.Z, 1.0);
+
+		FVector4 oldFwd(1.0, 0.0, 0.0, 0.0);
+		FVector4 newFwd;
+		FVector4 oldUp(0.0, 1.0, 0.0, 0.0);
+		FVector4 newUp;
+
+		boneMatrix.multMatrixPoint(&oldFwd.X, &newFwd.X);
+		boneMatrix.multMatrixPoint(&oldUp.X, &newUp.X);
+
+		oldFwd = FVector4(FVector3(newFwd.X, newFwd.Y, newFwd.Z).Unit(), 0.0);
+		oldUp = FVector4(FVector3(newUp.X, newUp.Y, newUp.Z).Unit(), 0.0);
+
+		worldMatrix.multMatrixPoint(&oldFwd.X, &newFwd.X);
+		worldMatrix.multMatrixPoint(&oldUp.X, &newUp.X);
+
+		//billion thanks to https://www.jldoty.com/code/DirectX/YPRfromUF/YPRfromUF.html for helping figure out all this math
+
+		DVector3 fwd = DVector3(newFwd.X, newFwd.Y, newFwd.Z).Unit();
+		DVector3 up = DVector3(newUp.X, newUp.Y, newUp.Z).Unit();
+
+		DVector3 y(0,1,0);
+		
+		DAngle yaw = DAngle::fromRad(atan2(fwd.Z, fwd.X));
+		DAngle pitch = DAngle::fromSin(-fwd.Y);
+		DAngle roll;
+
+		if(fwd == y)
+		{ // gimbal lock
+			yaw = DAngle::fromDeg(0);
+			roll = DAngle::fromSin(-up.X);
+		}
+		else
+		{
+			DVector3 right = (up ^ fwd).Unit(); // fwd and up must be perpendicular, thus right must be a unit vector
+
+			DVector3 x0 = (y ^ fwd).Unit(); // right vector with no roll, y and fwd aren't perpendicular, so it must be normalized into a unit vector
+			DVector3 y0 = (fwd ^ x0).Unit(); // up vector with no roll
+			
+			double cos = y0 | up; // cos of roll-less up vector and "rolled" up vector
+
+			double sin;
+
+			double max = std::max(std::abs(x0.Z), std::max(std::abs(x0.X), std::abs(x0.Y)));
+			if(std::abs(x0.X) == max)
+			{
+				assert(x0.X != 0); // at least one of x0.X, x0.Y, x0.Z must be nonzero
+				sin = ((y0.X * cos) - up.X) / x0.X;
+			}
+			else if(std::abs(x0.Y) == max)
+			{
+				assert(x0.Y != 0); // at least one of x0.X, x0.Y, x0.Z must be nonzero
+				sin = ((y0.Y * cos) - up.Y) / x0.Y;
+			}
+			else //if(std::abs(x0.Z) == max)
+			{
+				assert(x0.Z != 0); // at least one of x0.X, x0.Y, x0.Z must be nonzero
+				sin = ((y0.Z * cos) - up.Z) / x0.Z;
+			}
+
+			roll = DAngle::fromSin(sin);
+		}
+
+		return DVector3(yaw.Degrees(), pitch.Degrees(), roll.Degrees());
+	}
+
+	return DVector3(0,0,0);
+}
+
+void AActor::GetBonePosition(int model_index, int bone_index, bool with_override, DVector3 &pos, DVector3 &fwd, DVector3 &up)
+{
+	if(modelData && (modelData->flags & MODELDATA_GET_BONE_INFO) && model_index >= 0 && bone_index >= 0 && modelData->modelBoneInfo.SSize() > model_index && modelData->modelBoneInfo[model_index].positions.SSize() > bone_index)
+	{
+		if(picnum.isValid()) return; // picnum overrides don't render models
+
+		FSpriteModelFrame *smf = FindModelFrame(this, sprite, frame, false); // dropped flag is for voxels
+
+		FVector3 objPos = FVector3(Pos() + WorldOffset);
+
+		VSMatrix boneMatrix = (with_override ? modelData->modelBoneInfo[model_index].positions_with_override : modelData->modelBoneInfo[model_index].positions)[bone_index];
+		VSMatrix worldMatrix = smf->ObjectToWorldMatrix(this, objPos.X, objPos.Y, objPos.Z, 1.0);
+
+		FVector4 oldPos(pos.X, pos.Z, pos.Y, 1.0);
+		FVector4 newPos;
+		FVector4 oldFwd(fwd.X, fwd.Z, fwd.Y, 0.0);
+		FVector4 newFwd;
+		FVector4 oldUp(up.X, up.Z, up.Y, 0.0);
+		FVector4 newUp;
+
+		boneMatrix.multMatrixPoint(&oldPos.X, &newPos.X);
+		boneMatrix.multMatrixPoint(&oldFwd.X, &newFwd.X);
+		boneMatrix.multMatrixPoint(&oldUp.X, &newUp.X);
+
+		oldPos = FVector4(FVector3(newPos.X, newPos.Y, newPos.Z) / newPos.W, 1.0);
+		oldFwd = FVector4(FVector3(newFwd.X, newFwd.Y, newFwd.Z).Unit(), 0.0);
+		oldUp = FVector4(FVector3(newUp.X, newUp.Y, newUp.Z).Unit(), 0.0);
+
+		worldMatrix.multMatrixPoint(&oldPos.X, &newPos.X);
+		worldMatrix.multMatrixPoint(&oldFwd.X, &newFwd.X);
+		worldMatrix.multMatrixPoint(&oldUp.X, &newUp.X);
+
+		pos = DVector3(newPos.X, newPos.Z, newPos.Y);
+		fwd = DVector3(newFwd.X, newFwd.Z, newFwd.Y).Unit();
+		up = DVector3(newUp.X, newUp.Z, newUp.Y).Unit();
+	}
+}
+
+void AActor::GetObjectToWorldMatrix(double *outMat)
+{
+	if(modelData && modelData->flags & MODELDATA_GET_BONE_INFO)
+	{
+		if(picnum.isValid()) return; // picnum overrides don't render models
+
+		FSpriteModelFrame *smf = FindModelFrame(this, sprite, frame, false); // dropped flag is for voxels
+
+		FVector3 pos = FVector3(Pos() + WorldOffset);
+
+		VSMatrix outMatrix = smf->ObjectToWorldMatrix(this, pos.X, pos.Y, pos.Z, 1.0);
+
+		for(int i = 0; i < 16; i++)
+		{
+			outMat[i] = outMatrix.mMatrix[i];
+		}
+	}
+}
+
+
 //
 // P_MobjThinker
 //
@@ -4261,6 +4518,11 @@ void AActor::Tick ()
 	{
 		freezetics--;
 		return;
+	}
+
+	if(flags9 & MF9_DECOUPLEDANIMATIONS)
+	{
+		CalcBones(false);
 	}
 
 	AActor *onmo;
@@ -4822,6 +5084,11 @@ void AActor::Tick ()
 			if (!SetState(state->GetNextState()))
 				return; 		// freed itself
 		}
+	}
+
+	if(!(flags9 & MF9_DECOUPLEDANIMATIONS) && modelData && !(modelData->flags & MODELDATA_GET_BONE_INFO_RECALC))
+	{
+		CalcBones(false);
 	}
 
 	if (tics == -1 || state->GetCanRaise())
@@ -6772,19 +7039,19 @@ DEFINE_ACTION_FUNCTION(AActor, SpawnPuff)
 // 
 //---------------------------------------------------------------------------
 
-void P_SpawnBlood (const DVector3 &pos1, DAngle dir, int damage, AActor *originator)
+AActor *P_SpawnBlood (const DVector3 &pos1, DAngle dir, int damage, AActor *originator)
 {
-	AActor *th;
+	AActor *th = nullptr;
 	PClassActor *bloodcls = originator->GetBloodType();
 	DVector3 pos = pos1;
 	pos.Z += pr_spawnblood.Random2() / 64.;
 
 	int bloodtype = cl_bloodtype;
 	
-	if (bloodcls != NULL && !(GetDefaultByType(bloodcls)->flags4 & MF4_ALLOWPARTICLES))
+	if (bloodcls != nullptr && !(GetDefaultByType(bloodcls)->flags4 & MF4_ALLOWPARTICLES))
 		bloodtype = 0;
 
-	if (bloodcls != NULL)
+	if (bloodcls != nullptr)
 	{
 		th = Spawn(originator->Level, bloodcls, pos, NO_REPLACE); // GetBloodType already performed the replacement
 		th->Vel.Z = 2;
@@ -6805,6 +7072,7 @@ void P_SpawnBlood (const DVector3 &pos1, DAngle dir, int damage, AActor *origina
 		}
 		
 		// Moved out of the blood actor so that replacing blood is easier
+		bool foundState = false;
 		if (gameinfo.gametype & GAME_DoomStrifeChex)
 		{
 			if (gameinfo.gametype == GAME_Strife)
@@ -6812,53 +7080,60 @@ void P_SpawnBlood (const DVector3 &pos1, DAngle dir, int damage, AActor *origina
 				if (damage > 13)
 				{
 					FState *state = th->FindState(NAME_Spray);
-					if (state != NULL)
+					if (state != nullptr)
 					{
 						th->SetState (state);
-						goto statedone;
+						foundState = true;
 					}
 				}
 				else damage += 2;
 			}
-			int advance = 0;
-			if (damage <= 12 && damage >= 9)
+			if (!foundState)
 			{
-				advance = 1;
-			}
-			else if (damage < 9)
-			{
-				advance = 2;
-			}
-
-			PClassActor *cls = th->GetClass();
-
-			while (cls != RUNTIME_CLASS(AActor))
-			{
-				int checked_advance = advance;
-				if (cls->OwnsState(th->SpawnState))
+				int advance = 0;
+				if (damage <= 12 && damage >= 9)
 				{
-					for (; checked_advance > 0; --checked_advance)
-					{
-						// [RH] Do not set to a state we do not own.
-						if (cls->OwnsState(th->SpawnState + checked_advance))
-						{
-							th->SetState(th->SpawnState + checked_advance);
-							goto statedone;
-						}
-					}
+					advance = 1;
 				}
-				// We can safely assume the ParentClass is of type PClassActor
-				// since we stop when we see the Actor base class.
-				cls = static_cast<PClassActor *>(cls->ParentClass);
+				else if (damage < 9)
+				{
+					advance = 2;
+				}
+
+				PClassActor* cls = th->GetClass();
+				bool good = false;
+				while (cls != RUNTIME_CLASS(AActor))
+				{
+					int checked_advance = advance;
+					if (cls->OwnsState(th->SpawnState))
+					{
+						for (; checked_advance > 0; --checked_advance)
+						{
+							// [RH] Do not set to a state we do not own.
+							if (cls->OwnsState(th->SpawnState + checked_advance))
+							{
+								th->SetState(th->SpawnState + checked_advance);
+								good = true;
+								break;
+							}
+						}
+						if (good)
+							break;
+					}
+					// We can safely assume the ParentClass is of type PClassActor
+					// since we stop when we see the Actor base class.
+					cls = static_cast<PClassActor*>(cls->ParentClass);
+				}
 			}
 		}
 
-	statedone:
 		if (!(bloodtype <= 1)) th->renderflags |= RF_INVISIBLE;
 	}
 
 	if (bloodtype >= 1)
 		P_DrawSplash2 (originator->Level, 40, pos, dir, 2, originator->BloodColor);
+
+	return th;
 }
 
 DEFINE_ACTION_FUNCTION(AActor, SpawnBlood)
@@ -6869,8 +7144,7 @@ DEFINE_ACTION_FUNCTION(AActor, SpawnBlood)
 	PARAM_FLOAT(z);
 	PARAM_ANGLE(dir);
 	PARAM_INT(damage);
-	P_SpawnBlood(DVector3(x, y, z), dir, damage, self);
-	return 0;
+	ACTION_RETURN_OBJECT(P_SpawnBlood(DVector3(x, y, z), dir, damage, self));
 }
 
 
@@ -8234,6 +8508,10 @@ void AActor::Revive()
 		Level->total_monsters++;
 	}
 
+	IFOVERRIDENVIRTUALPTRNAME(this, NAME_Actor, OnRevive)
+	{
+		VMCallVoid<AActor*>(func, this);
+	}
 	// [ZZ] resurrect hook
 	Level->localEventManager->WorldThingRevived(this);
 }

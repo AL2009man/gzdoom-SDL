@@ -976,6 +976,7 @@ set (PCH_SOURCES
 	launcher/launcherbuttonbar.cpp
 	launcher/playgamepage.cpp
 	launcher/settingspage.cpp
+	launcher/networkpage.cpp
 
 	common/audio/sound/i_sound.cpp
 	common/audio/sound/oalsound.cpp
@@ -1124,6 +1125,7 @@ set (PCH_SOURCES
 	common/rendering/v_video.cpp
 	common/rendering/r_thread.cpp
 	common/rendering/r_videoscale.cpp
+	common/rendering/stb_include.cpp
 	common/rendering/hwrenderer/hw_draw2d.cpp
 	common/rendering/hwrenderer/data/hw_clock.cpp
 	common/rendering/hwrenderer/data/hw_skydome.cpp

@@ -238,6 +238,7 @@ class Thinker : Object native play
 	
 	virtual native void Tick();
 	virtual native void PostBeginPlay();
+	virtual void OnLoad() {}
 	native void ChangeStatNum(int stat);
 	
 	static clearscope int Tics2Seconds(int tics)
@@ -388,6 +389,7 @@ struct LevelInfo native
 	native readonly String NextSecretMap;
 	native readonly String SkyPic1;
 	native readonly String SkyPic2;
+	native readonly String SkyMistPic;
 	native readonly String F1Pic;
 	native readonly int cluster;
 	native readonly int partime;
@@ -403,6 +405,7 @@ struct LevelInfo native
 	native readonly int musicorder;
 	native readonly float skyspeed1;
 	native readonly float skyspeed2;
+	native readonly float skymistspeed;
 	native readonly int cdtrack;
 	native readonly double gravity;
 	native readonly double aircontrol;
@@ -413,6 +416,8 @@ struct LevelInfo native
 	native readonly int fogdensity;
 	native readonly int outsidefogdensity;
 	native readonly int skyfog;
+	native readonly float thickfogdistance;
+	native readonly float thickfogmultiplier;
 	native readonly float pixelstretch;
 	native readonly name RedirectType;
 	native readonly String RedirectMapName;
@@ -493,8 +498,10 @@ struct LevelLocals native
 	native readonly int musicorder;
 	native readonly TextureID skytexture1;
 	native readonly TextureID skytexture2;
+	native readonly TextureID skymisttexture;
 	native float skyspeed1;
 	native float skyspeed2;
+	native float skymistspeed;
 	native int total_secrets;
 	native int found_secrets;
 	native int total_items;
@@ -526,6 +533,8 @@ struct LevelLocals native
 	native readonly int fogdensity;
 	native readonly int outsidefogdensity;
 	native readonly int skyfog;
+	native readonly float thickfogdistance;
+	native readonly float thickfogmultiplier;
 	native readonly float pixelstretch;
 	native readonly float MusicVolume;
 	native name deathsequence;
@@ -582,9 +591,14 @@ struct LevelLocals native
 	native clearscope int ActorOnLineSide(Actor mo, Line l) const;
 	native clearscope int BoxOnLineSide(Vector2 pos, double radius, Line l) const;
 
+	native clearscope int PlayerNum(PlayerInfo player) const;
+
 	native String GetChecksum() const;
 
 	native void ChangeSky(TextureID sky1, TextureID sky2 );
+	native void ChangeSkyMist(TextureID skymist, bool usemist = true);
+	native void SetSkyFog(int fogdensity);
+	native void SetThickFog(float distance, float multiplier);
 	native void ForceLightning(int mode = 0, sound tempSound = "");
 
 	native clearscope Thinker CreateClientsideThinker(class<Thinker> type, int statnum = Thinker.STAT_DEFAULT);
@@ -611,6 +625,8 @@ struct LevelLocals native
 
 	native void SpawnParticle(FSpawnParticleParams p);
 	native VisualThinker SpawnVisualThinker(Class<VisualThinker> type);
+
+	clearscope native static bool WorldPaused();
 }
 
 // a few values of this need to be readable by the play code.

@@ -734,8 +734,7 @@ void FLevelLocals::ReadMultiplePlayers(FSerializer &arc, int numPlayers, bool fr
 {
 	TArray<NetworkPlayerInfo> tempPlayers = {};
 	tempPlayers.Reserve(numPlayers);
-	TArray<bool> assignedPlayers = {};
-	assignedPlayers.Reserve(MAXPLAYERS);
+	bool assignedPlayers[MAXPLAYERS] = {};
 
 	// Read all the save game players into a temporary array
 	for (auto& p : tempPlayers)
@@ -964,6 +963,7 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 		("fadeto", fadeto)
 		("skyspeed1", skyspeed1)
 		("skyspeed2", skyspeed2)
+		("skymistspeed", skymistspeed)
 		("found_secrets", found_secrets)
 		("found_items", found_items)
 		("killed_monsters", killed_monsters)
@@ -977,9 +977,12 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 		("totaltime", i)
 		("skytexture1", skytexture1)
 		("skytexture2", skytexture2)
+		("skymisttexture", skymisttexture)
 		("fogdensity", fogdensity)
 		("outsidefogdensity", outsidefogdensity)
 		("skyfog", skyfog)
+		("thickfogdistance", thickfogdistance)
+		("thickfogmultiplier", thickfogmultiplier)
 		("deathsequence", deathsequence)
 		("bodyqueslot", bodyqueslot)
 		("spawnindex", spawnindex)
@@ -992,7 +995,6 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 		("automap", automap)
 		("interpolator", interpolator)
 		("frozenstate", frozenstate)
-		("visualthinkerhead", VisualThinkerHead)
 		("actorbehaviors", ActorBehaviors);
 
 

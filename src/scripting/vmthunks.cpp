@@ -61,6 +61,9 @@
 #include "texturemanager.h"
 #include "v_draw.h"
 
+extern int paused;
+extern bool pauseext;
+
 DVector2 AM_GetPosition();
 int Net_GetLatency(int *ld, int *ad);
 void PrintPickupMessage(bool localview, const FString &str);
@@ -498,6 +501,23 @@ DEFINE_ACTION_FUNCTION_NATIVE(_Sector, RemoveForceField, RemoveForceField)
 	 AdjustFloorClip(self);
 	 return 0;
  }
+
+int WorldPaused()
+{
+	if (paused)
+		return true;
+
+	if (netgame || gamestate != GS_LEVEL)
+		return false;
+
+	return pauseext || menuactive == MENU_On || ConsoleState == c_down || ConsoleState == c_falling;
+}
+
+DEFINE_ACTION_FUNCTION_NATIVE(FLevelLocals, WorldPaused, WorldPaused)
+{
+	PARAM_PROLOGUE;
+	ACTION_RETURN_BOOL(WorldPaused());
+}
 
 static sector_t *PointInSectorXY(FLevelLocals *self, double x, double y)
 {
@@ -1738,6 +1758,43 @@ DEFINE_ACTION_FUNCTION_NATIVE(_Sector, SetXOffset, SetXOffset)
 	 return 0;
  }
 
+ DEFINE_ACTION_FUNCTION(FLevelLocals, ChangeSkyMist)
+ {
+	 PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	 PARAM_INT(skymist);
+	 PARAM_BOOL(usemist);
+	 self->skymisttexture = FSetTextureID(skymist);
+	 if (usemist)
+	 {
+		 self->flags3 |= LEVEL3_SKYMIST;
+	 }
+	 else
+	 {
+		 self->flags3 &= ~LEVEL3_SKYMIST;
+	 }
+	 InitSkyMap(self);
+	 return 0;
+ }
+
+ DEFINE_ACTION_FUNCTION(FLevelLocals, SetSkyFog)
+ {
+	 PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	 PARAM_INT(fogdensity);
+	 self->skyfog = fogdensity;
+	 InitSkyMap(self);
+	 return 0;
+ }
+
+ DEFINE_ACTION_FUNCTION(FLevelLocals, SetThickFog)
+ {
+	 PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	 PARAM_FLOAT(distance);
+	 PARAM_FLOAT(multiplier);
+	 self->thickfogdistance = distance;
+	 if (multiplier > 0.0) self->thickfogmultiplier = multiplier;
+	 return 0;
+ }
+
  DEFINE_ACTION_FUNCTION(FLevelLocals, StartIntermission)
  {
 	 PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
@@ -2108,21 +2165,6 @@ DEFINE_ACTION_FUNCTION_NATIVE(DBaseStatusBar, DetachAllMessages, SBar_DetachAllM
 	return 0;
 }
 
-static void SBar_Draw(DBaseStatusBar *self, int state, double ticFrac)
-{
-	self->Draw((EHudState)state, ticFrac);
-}
-
-
-DEFINE_ACTION_FUNCTION_NATIVE(DBaseStatusBar, Draw, SBar_Draw)
-{
-	PARAM_SELF_PROLOGUE(DBaseStatusBar);
-	PARAM_INT(state);
-	PARAM_FLOAT(ticFrac);
-	self->Draw((EHudState)state, ticFrac);
-	return 0;
-}
-
 static void SetMugshotState(DBaseStatusBar *self, const FString &statename, bool wait, bool reset)
 {
 	self->mugshot.SetState(statename.GetChars(), wait, reset);
@@ -2282,6 +2324,7 @@ DEFINE_ACTION_FUNCTION_NATIVE(FLevelLocals, GetSpotState, GetSpotState)
 //---------------------------------------------------------------------------
 
 EXTERN_CVAR(Int, am_showmaplabel)
+EXTERN_CVAR(Bool, am_showlevelname)
 
 void FormatMapName(FLevelLocals *self, int cr, FString *result)
 {
@@ -2295,13 +2338,19 @@ void FormatMapName(FLevelLocals *self, int cr, FString *result)
 	if (self->info->MapLabel.IsNotEmpty())
 	{
 		if (self->info->MapLabel.Compare("*"))
-			*result << self->info->MapLabel << ": ";
+			*result << self->info->MapLabel;
 	}
 	else if (am_showmaplabel == 1 || (am_showmaplabel == 2 && !ishub))
 	{
-		*result << self->MapName << ": ";
+		*result << self->MapName;
 	}
-	*result << mapnamecolor << self->LevelName;
+
+	if (am_showlevelname)
+	{
+		if (!result->IsEmpty())
+			*result << ": ";
+		*result << mapnamecolor << self->LevelName;
+	}
 }
 
 DEFINE_ACTION_FUNCTION_NATIVE(FLevelLocals, FormatMapName, FormatMapName)
@@ -2366,6 +2415,13 @@ DEFINE_ACTION_FUNCTION_NATIVE(FLevelLocals, GetUDMFString, ZGetUDMFString)
 	PARAM_INT(index);
 	PARAM_NAME(key);
 	ACTION_RETURN_STRING(GetUDMFString(self, type, index, key));
+}
+
+DEFINE_ACTION_FUNCTION(FLevelLocals, PlayerNum)
+{
+	PARAM_SELF_STRUCT_PROLOGUE(FLevelLocals);
+	PARAM_POINTER(player, player_t);
+	ACTION_RETURN_INT(self->PlayerNum(player));
 }
 
 DEFINE_ACTION_FUNCTION(FLevelLocals, GetChecksum)
@@ -2810,6 +2866,7 @@ DEFINE_FIELD_X(LevelInfo, level_info_t, NextMap)
 DEFINE_FIELD_X(LevelInfo, level_info_t, NextSecretMap)
 DEFINE_FIELD_X(LevelInfo, level_info_t, SkyPic1)
 DEFINE_FIELD_X(LevelInfo, level_info_t, SkyPic2)
+DEFINE_FIELD_X(LevelInfo, level_info_t, SkyMistPic)
 DEFINE_FIELD_X(LevelInfo, level_info_t, F1Pic)
 DEFINE_FIELD_X(LevelInfo, level_info_t, cluster)
 DEFINE_FIELD_X(LevelInfo, level_info_t, partime)
@@ -2825,6 +2882,7 @@ DEFINE_FIELD_X(LevelInfo, level_info_t, MapLabel)
 DEFINE_FIELD_X(LevelInfo, level_info_t, musicorder)
 DEFINE_FIELD_X(LevelInfo, level_info_t, skyspeed1)
 DEFINE_FIELD_X(LevelInfo, level_info_t, skyspeed2)
+DEFINE_FIELD_X(LevelInfo, level_info_t, skymistspeed)
 DEFINE_FIELD_X(LevelInfo, level_info_t, cdtrack)
 DEFINE_FIELD_X(LevelInfo, level_info_t, gravity)
 DEFINE_FIELD_X(LevelInfo, level_info_t, aircontrol)
@@ -2835,6 +2893,8 @@ DEFINE_FIELD_X(LevelInfo, level_info_t, deathsequence)
 DEFINE_FIELD_X(LevelInfo, level_info_t, fogdensity)
 DEFINE_FIELD_X(LevelInfo, level_info_t, outsidefogdensity)
 DEFINE_FIELD_X(LevelInfo, level_info_t, skyfog)
+DEFINE_FIELD_X(LevelInfo, level_info_t, thickfogdistance)
+DEFINE_FIELD_X(LevelInfo, level_info_t, thickfogmultiplier)
 DEFINE_FIELD_X(LevelInfo, level_info_t, pixelstretch)
 DEFINE_FIELD_X(LevelInfo, level_info_t, RedirectType)
 DEFINE_FIELD_X(LevelInfo, level_info_t, RedirectMapName)
@@ -2868,8 +2928,10 @@ DEFINE_FIELD(FLevelLocals, Music)
 DEFINE_FIELD(FLevelLocals, musicorder)
 DEFINE_FIELD(FLevelLocals, skytexture1)
 DEFINE_FIELD(FLevelLocals, skytexture2)
+DEFINE_FIELD(FLevelLocals, skymisttexture)
 DEFINE_FIELD(FLevelLocals, skyspeed1)
 DEFINE_FIELD(FLevelLocals, skyspeed2)
+DEFINE_FIELD(FLevelLocals, skymistspeed)
 DEFINE_FIELD(FLevelLocals, total_secrets)
 DEFINE_FIELD(FLevelLocals, found_secrets)
 DEFINE_FIELD(FLevelLocals, total_items)
@@ -2884,6 +2946,8 @@ DEFINE_FIELD(FLevelLocals, teamdamage)
 DEFINE_FIELD(FLevelLocals, fogdensity)
 DEFINE_FIELD(FLevelLocals, outsidefogdensity)
 DEFINE_FIELD(FLevelLocals, skyfog)
+DEFINE_FIELD(FLevelLocals, thickfogdistance)
+DEFINE_FIELD(FLevelLocals, thickfogmultiplier)
 DEFINE_FIELD(FLevelLocals, pixelstretch)
 DEFINE_FIELD(FLevelLocals, MusicVolume)
 DEFINE_FIELD(FLevelLocals, deathsequence)

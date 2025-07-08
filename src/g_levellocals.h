@@ -57,6 +57,13 @@
 #include "doom_aabbtree.h"
 #include "doom_levelmesh.h"
 #include "p_visualthinker.h"
+#include <memory>
+
+struct FGlobalDLightLists
+{
+	TMap<FSection*, TMap<FDynamicLight*, std::unique_ptr<FLightNode>>> flat_dlist;
+	TMap<side_t*, TMap<FDynamicLight*, std::unique_ptr<FLightNode>>> wall_dlist;
+};
 
 //============================================================================
 //
@@ -680,12 +687,14 @@ public:
 	unsigned int cdid;
 	FTextureID	skytexture1;
 	FTextureID	skytexture2;
+	FTextureID	skymisttexture;
 
 	float		skyspeed1;				// Scrolling speed of sky textures, in pixels per ms
 	float		skyspeed2;
+	float		skymistspeed;
 
 	double		sky1pos, sky2pos;
-	float		hw_sky1pos, hw_sky2pos;
+	float		hw_sky1pos, hw_sky2pos, hw_skymistpos;
 	bool		skystretch;
 	uint32_t	globalcolormap;
 
@@ -744,12 +753,16 @@ public:
 	bool		lightadditivesurfaces;
 	bool		notexturefill;
 	int			ImpactDecalCount;
+	float		thickfogdistance;
+	float		thickfogmultiplier;
+
+	FGlobalDLightLists lightlists;
 
 	FDynamicLight *lights;
 	DVisualThinker* VisualThinkerHead = nullptr;
 
 	// links to global game objects
-	TArray<DBehavior*> ActorBehaviors;
+	TArray<DBehavior*> ActorBehaviors, ClientSideActorBehaviors;
 	TArray<TObjPtr<AActor *>> CorpseQueue;
 	TObjPtr<DFraggleThinker *> FraggleScriptThinker = MakeObjPtr<DFraggleThinker*>(nullptr);
 	TObjPtr<DACSThinker*> ACSThinker = MakeObjPtr<DACSThinker*>(nullptr);
@@ -767,7 +780,10 @@ public:
 		if (b.Level == nullptr)
 		{
 			b.Level = this;
-			ActorBehaviors.Push(&b);
+			if (b.IsClientside())
+				ClientSideActorBehaviors.Push(&b);
+			else
+				ActorBehaviors.Push(&b);
 		}
 	}
 
@@ -776,7 +792,10 @@ public:
 		if (b.Level == this)
 		{
 			b.Level = nullptr;
-			ActorBehaviors.Delete(ActorBehaviors.Find(&b));
+			if (b.IsClientside())
+				ClientSideActorBehaviors.Delete(ClientSideActorBehaviors.Find(&b));
+			else
+				ActorBehaviors.Delete(ActorBehaviors.Find(&b));
 		}
 	}
 

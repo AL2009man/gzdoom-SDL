@@ -106,7 +106,7 @@ enum EPuffFlags
 };
 
 AActor *P_SpawnPuff(AActor *source, PClassActor *pufftype, const DVector3 &pos, DAngle hitdir, DAngle particledir, int updown, int flags = 0, AActor *vict = NULL);
-void	P_SpawnBlood (const DVector3 &pos, DAngle angle, int damage, AActor *originator);
+AActor *P_SpawnBlood (const DVector3 &pos, DAngle angle, int damage, AActor *originator);
 void	P_BloodSplatter (const DVector3 &pos, AActor *originator, DAngle hitangle);
 void	P_BloodSplatter2 (const DVector3 &pos, AActor *originator, DAngle hitangle);
 void	P_RipperBlood (AActor *mo, AActor *bleeder);
@@ -456,6 +456,7 @@ enum EDmgFlags
 	DMG_NO_PAIN = 1024,
 	DMG_EXPLOSION = 2048,
 	DMG_NO_ENHANCE = 4096,
+	DMG_RAILGUN = 8192,
 };
 
 
